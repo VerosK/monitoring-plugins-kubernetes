@@ -1,0 +1,72 @@
+#!/usr/bin/env python
+
+from __future__ import print_function
+import subprocess
+import json
+from pprint import pprint
+
+command = 'kubectl get deployments --all-namespaces -o json'
+
+def main():
+    cmd = subprocess.check_output(command.split())
+    data = json.loads(cmd)
+    assert data['apiVersion'] == 'v1'
+
+    totals = dict(
+         requested=0, updated=0, missing=0, ready=0)
+    broken_deployments = {}
+    valid_deployments = {}
+
+    for deployment in data['items']:
+        name = deployment['metadata']['name']
+        namespace = deployment['metadata']['namespace']
+        requested = deployment['status']['replicas']
+        updated = deployment['status']['updatedReplicas']
+        missing = deployment['status'].get('unavailableReplicas', 0)
+        ready = deployment['status'].get('readyReplicas', 0)
+        
+        totals['requested'] += requested    
+        totals['updated'] += updated
+        totals['missing'] += missing
+        totals['ready'] += ready
+
+        full_name = '{}/{}'.format(namespace, name)
+        if missing:
+            broken_deployments[full_name] = \
+                    '{}/{}'.format(missing, requested)
+        else:
+            valid_deployments[full_name] = 0
+
+    output = []
+    retv = 0
+    if totals['missing']:
+        output.append('WARNING - ')
+        retv = 1 
+        if len(broken_deployments) == 1:
+             broken = broken_deployments[0]
+             output.append('deployment {} is missing '.format(broken))
+             if totals['missing'] == 1: 
+                  output.append('pod')
+             else:
+                  output.append('{} pods'.format(totals['missing']))
+        else:
+             output.append('{} deployments are missing {} pods'.format(
+                   len(broken_deployments), totals['missing']))
+    else:
+       retv = 0
+       output.append('All {} deployments are happy'.format(
+                 len(valid_deployments)))
+    output.append('|')
+    for k in 'requested ready updated missing'.split():
+         output.append('pods_{}={} '.format(k, totals[k]))
+    output.append('deployments_happy={} deployments_unhappy={}'.format(
+          len(valid_deployments), len(broken_deployments)))
+    print(''.join(output))
+    if broken_deployments:
+        print('')
+        for k,v in broken_deployments.items():
+            print('{} - {} missing'.format(k, v))
+    raise SystemExit(retv)
+
+if __name__ == '__main__':
+    main()

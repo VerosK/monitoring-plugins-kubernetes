@@ -1,0 +1,62 @@
+#!/usr/bin/env python
+
+from __future__ import print_function
+import subprocess
+import json
+from pprint import pprint
+
+command = 'kubectl get componentstatus -o json'
+
+def to_bool(s):
+    s = s.lower()
+    if s == 'true':
+         return True
+    elif s == 'false':
+         return False
+    assert s in ['true','false']
+
+
+def main():
+    cmd = subprocess.check_output(command.split())
+    data = json.loads(cmd)
+    assert data['apiVersion'] == 'v1'
+
+    healthy_components, unhealthy_components = {},{}
+
+    for component in data['items']:
+        name = component['metadata']['name']
+        namespace = component['metadata']['namespace']
+        conditions = { str(i['type']): to_bool(i['status']) 
+                       for i in component['conditions'] }
+        if conditions['Healthy']:
+             healthy_components[name] = conditions
+        else:
+             unhealthy_components[name] = conditions
+
+    output = []
+    retv = 0
+    if unhealthy_components:
+        output.append('WARNING - ')
+        retv = 1 
+        if len(unhealthy_components) == 1:
+             broken = unhealthy_components.keys()[0]
+             output.append('{} is unhealthy'.format(broken))
+        else:
+             output.append('{} components are unhealthy'.format(
+                   len(unhealthy_components)))
+    else:
+       retv = 0
+       output.append('all {} components are happy'.format(
+                 len(healthy_components)))
+    output.append('|')
+    output.append('healthy={} unhealthy={}'.format(
+          len(healthy_components), len(unhealthy_components)))
+    print(''.join(output))
+    if unhealthy_components:
+        print('')
+        for k,v in unhealthy_components.items():
+            print('{} - {}'.format(k, v))
+    raise SystemExit(retv)
+
+if __name__ == '__main__':
+    main()
