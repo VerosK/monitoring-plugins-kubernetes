@@ -43,10 +43,10 @@ def main():
         output.append('WARNING - ')
         retv = 1 
         if len(broken_deployments) == 1:
-             broken = broken_deployments[0]
+             broken = broken_deployments.keys()[0]
              output.append('deployment {} is missing '.format(broken))
              if totals['missing'] == 1: 
-                  output.append('pod')
+                  output.append('one pod')
              else:
                   output.append('{} pods'.format(totals['missing']))
         else:
@@ -59,8 +59,10 @@ def main():
     output.append('|')
     for k in 'requested ready updated missing'.split():
          output.append('pods_{}={} '.format(k, totals[k]))
-    output.append('deployments_happy={} deployments_unhappy={}'.format(
-          len(valid_deployments), len(broken_deployments)))
+    total_deployments = len(valid_deployments)+len(broken_deployments)
+    output.append('deployments_happy={};;;0;{} deployments_unhappy={};;;0;{}'.format(
+            len(valid_deployments), total_deployments, 
+            len(broken_deployments), total_deployments))
     print(''.join(output))
     if broken_deployments:
         print('')
