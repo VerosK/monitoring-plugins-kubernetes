@@ -20,6 +20,13 @@ def main():
     for deployment in data['items']:
         name = deployment['metadata']['name']
         namespace = deployment['metadata']['namespace']
+        full_name = '{}/{}'.format(namespace, name)
+        valid_deployments[full_name] = 0
+
+        if deployment['spec']['replicas'] == 0:
+            # no need to check
+            continue
+
         requested = deployment['status']['replicas']
         updated = deployment['status']['updatedReplicas']
         missing = deployment['status'].get('unavailableReplicas', 0)
@@ -30,12 +37,11 @@ def main():
         totals['missing'] += missing
         totals['ready'] += ready
 
-        full_name = '{}/{}'.format(namespace, name)
+
         if missing:
+            del valid_deployments[full_name]
             broken_deployments[full_name] = \
                     '{}/{}'.format(missing, requested)
-        else:
-            valid_deployments[full_name] = 0
 
     output = []
     retv = 0
