@@ -5,12 +5,41 @@ import subprocess
 import json
 from pprint import pprint
 
-command = 'kubectl get deployments --all-namespaces -o json'
+import argparse
+
+
+def parse_arguments():
+    global args, parser
+    parser = argparse.ArgumentParser(description='Check kubernetes deployments validity')
+    parser.add_argument('--namespace', dest='namespace',
+                    help='Process only namespace (default: check all namespaces)')
+    parser.add_argument('--name', dest='name', 
+                    help='Process only deployment name')
+    args = parser.parse_args()
+
+
+def get_query_command():
+    global args, parser
+
+    if args.name and not args.namespace:
+        print("ERROR: Providing name without namespace is forbidden\n")
+        parser.print_help()
+        raise SystemExit(3)
+
+    if args.name:
+        command = 'kubectl get deployments --namespace={} --field-selector=metadata.name={} -o json'.format(args.namespace, args.name)
+    
+    elif args.namespace:
+        command = 'kubectl get deployments --namespace {} -o json'.format(args.namespace)
+    else:
+        command = 'kubectl get deployments --all-namespaces -o json'
+    return command
 
 def main():
-    cmd = subprocess.check_output(command.split())
+    query_command = get_query_command()
+    cmd = subprocess.check_output(query_command.split())
     data = json.loads(cmd)
-    assert data['apiVersion'] == 'v1'
+    assert data['apiVersion'] in ('v1', 'extensions/v1beta1')
 
     totals = dict(
          requested=0, updated=0, missing=0, ready=0)
@@ -77,4 +106,5 @@ def main():
     raise SystemExit(retv)
 
 if __name__ == '__main__':
+    parse_arguments()
     main()
