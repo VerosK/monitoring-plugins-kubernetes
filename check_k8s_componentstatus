@@ -45,7 +45,7 @@ def main():
                    len(unhealthy_components)))
     else:
        retv = 0
-       output.append('all {} components are happy'.format(
+       output.append('All {} components are happy'.format(
                  len(healthy_components)))
     output.append('|')
     output.append('healthy={} unhealthy={}'.format(
