@@ -15,6 +15,9 @@ def parse_arguments():
                     help='Process only namespace (default: check all namespaces)')
     parser.add_argument('--name', dest='name', 
                     help='Process only deployment name')
+    parser.add_argument('--ignore-deployments', dest='ignored_deployments',  
+                    default='',
+                    help='Ignore these deployments (kube-lego/kube-lego)')
     args = parser.parse_args()
 
 
@@ -46,18 +49,25 @@ def main():
     broken_deployments = {}
     valid_deployments = {}
 
+    ignored_deployments = args.ignored_deployments.split()
+
     for deployment in data['items']:
         name = deployment['metadata']['name']
         namespace = deployment['metadata']['namespace']
         full_name = '{}/{}'.format(namespace, name)
+        # this should be ignored
+        if full_name in ignored_deployments:
+            continue
+
+	# 
         valid_deployments[full_name] = 0
 
         if deployment['spec']['replicas'] == 0:
             # no need to check
             continue
 
-        requested = deployment['status']['replicas']
-        updated = deployment['status']['updatedReplicas']
+        requested = deployment['status'].get('replicas', 0)
+        updated = deployment['status'].get('updatedReplicas', 0)
         missing = deployment['status'].get('unavailableReplicas', 0)
         ready = deployment['status'].get('readyReplicas', 0)
         
