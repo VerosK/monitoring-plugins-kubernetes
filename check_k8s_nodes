@@ -1,0 +1,62 @@
+#!/usr/bin/env python
+
+from __future__ import print_function
+import subprocess
+import json
+from pprint import pprint
+
+command = 'kubectl get nodes -o json'
+
+def to_bool(s):
+    s = s.lower()
+    if s == 'true':
+         return True
+    elif s == 'false':
+         return False
+    assert s in ['true','false']
+
+
+def main():
+    cmd = subprocess.check_output(command.split())
+    data = json.loads(cmd)
+    assert data['apiVersion'] == 'v1'
+
+    ready_nodes, non_ready_nodes = {},{}
+
+    for node in data['items']:
+        name = node['metadata']['name']
+        conditions = { str(i['type']): to_bool(i['status']) 
+                       for i in node['status']['conditions'] }
+        #print(conditions)
+        if conditions['Ready']:
+             ready_nodes[name] = conditions
+        else:
+             non_ready_nodes[name] = conditions
+
+    output = []
+    retv = 0
+    if non_ready_nodes:
+        output.append('WARNING - ')
+        retv = 1 
+        if len(non_ready_nodes) == 1:
+             broken = non_ready_nodes.keys()[0]
+             output.append('node {} is unhealthy'.format(broken))
+        else:
+             output.append('{} nodes are not ready'.format(
+                   len(non_ready_nodes)))
+    else:
+       retv = 0
+       output.append('all {} nodes are happy'.format(
+                 len(ready_nodes)))
+    output.append('|')
+    output.append('ready={} not_ready={}'.format(
+          len(ready_nodes), len(non_ready_nodes)))
+    print(''.join(output))
+    if non_ready_nodes:
+        print('')
+        for k,v in non_ready_nodes.items():
+            print('{} - {}'.format(k, v))
+    raise SystemExit(retv)
+
+if __name__ == '__main__':
+    main()
