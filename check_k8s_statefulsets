@@ -1,0 +1,112 @@
+#!/usr/bin/env python
+
+from __future__ import print_function
+import subprocess
+import json
+from pprint import pprint
+from os.path import expanduser
+
+import argparse
+
+
+def parse_arguments():
+    global args, parser
+    parser = argparse.ArgumentParser(description='Check kubernetes statefulsets validity')
+    parser.add_argument('--namespace', dest='namespace',
+                    help='Process only namespace (default: check all namespaces)')
+    parser.add_argument('--name', dest='name', 
+                    help='Process only deployment name')
+    args = parser.parse_args()
+
+
+def get_query_command():
+    global args, parser
+
+    if args.name and not args.namespace:
+        print("ERROR: Providing name without namespace is forbidden\n")
+        parser.print_help()
+        raise SystemExit(3)
+
+    if args.name:
+        command = 'kubectl get statefulsets --namespace={} --field-selector=metadata.name={} -o json'.format(args.namespace, args.name)
+    
+    elif args.namespace:
+        command = 'kubectl get statefulsets --namespace {} -o json'.format(args.namespace)
+    else:
+        command = 'kubectl get statefulsets --all-namespaces -o json'
+
+    return command
+
+def main():
+    query_command = get_query_command()
+    cmd = subprocess.check_output(query_command.split())
+    data = json.loads(cmd)
+    assert data['apiVersion'] in ('v1', 'extensions/v1beta1')
+
+    totals = dict(
+         requested=0, updated=0, missing=0, ready=0)
+    broken_statefulsets = {}
+    valid_statefulsets = {}
+
+    for deployment in data['items']:
+        name = deployment['metadata']['name']
+        namespace = deployment['metadata']['namespace']
+        full_name = '{}/{}'.format(namespace, name)
+        valid_statefulsets[full_name] = 0
+
+        if deployment['spec']['replicas'] == 0:
+            # no need to check
+            continue
+
+        requested = deployment['status']['replicas']
+        updated = deployment['status']['updatedReplicas']
+        missing = deployment['status'].get('unavailableReplicas', 0)
+        ready = deployment['status'].get('readyReplicas', 0)
+        
+        totals['requested'] += requested    
+        totals['updated'] += updated
+        totals['missing'] += missing
+        totals['ready'] += ready
+
+
+        if missing:
+            del valid_statefulsets[full_name]
+            broken_statefulsets[full_name] = \
+                    '{}/{}'.format(missing, requested)
+
+    output = []
+    retv = 0
+    if totals['missing']:
+        output.append('WARNING - ')
+        retv = 1 
+        if len(broken_statefulsets) == 1:
+             broken = broken_statefulsets.keys()[0]
+             output.append('deployment {} is missing '.format(broken))
+             if totals['missing'] == 1: 
+                  output.append('one pod')
+             else:
+                  output.append('{} pods'.format(totals['missing']))
+        else:
+             output.append('{} statefulsets are missing {} pods'.format(
+                   len(broken_statefulsets), totals['missing']))
+    else:
+       retv = 0
+       output.append('All {} statefulsets are happy'.format(
+                 len(valid_statefulsets)))
+    output.append('|')
+    for k in 'requested ready updated missing'.split():
+         output.append('pods_{}={} '.format(k, totals[k]))
+    total_statefulsets = len(valid_statefulsets)+len(broken_statefulsets)
+    output.append('statefulsets_happy={};;;0;{} statefulsets_unhappy={};;;0;{}'.format(
+            len(valid_statefulsets), total_statefulsets, 
+            len(broken_statefulsets), total_statefulsets))
+    print(''.join(output))
+    if broken_statefulsets:
+        print('')
+        for k,v in broken_statefulsets.items():
+            print('{} - {} missing'.format(k, v))
+    raise SystemExit(retv)
+
+if __name__ == '__main__':
+    parse_arguments()
+    main()
